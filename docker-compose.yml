@@ -1,0 +1,79 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: aetherflow_postgres
+    environment:
+      POSTGRES_USER: aetherflow
+      POSTGRES_PASSWORD: aetherflow_dev
+      POSTGRES_DB: aetherflow
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aetherflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - aetherflow
+
+  redis:
+    image: redis:7-alpine
+    container_name: aetherflow_redis
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - aetherflow
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aetherflow_api
+    environment:
+      DATABASE_URL: postgresql://aetherflow:aetherflow_dev@postgres:5432/aetherflow
+      REDIS_URL: redis://redis:6379/0
+      LOG_LEVEL: INFO
+      ENV: development
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./src:/app/src
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: uvicorn aetherflow.main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - aetherflow
+
+  # Placeholder for worker (will configure in next milestone)
+  # worker:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   environment:
+  #     DATABASE_URL: postgresql://aetherflow:aetherflow_dev@postgres:5432/aetherflow
+  #     REDIS_URL: redis://redis:6379/0
+  #   depends_on:
+  #     - postgres
+  #     - redis
+  #   command: python -m aetherflow.worker
+  #   networks:
+  #     - aetherflow
+
+volumes:
+  postgres_data:
+
+networks:
+  aetherflow:
+    driver: bridge
