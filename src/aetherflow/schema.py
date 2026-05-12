@@ -34,3 +34,61 @@ class WorkflowListResponse(BaseModel):
     skip: int
     limit: int
     items: list[WorkflowResponse]
+
+
+class ExecutionCreate(BaseModel):
+    """Schema for creating a new execution."""
+    input: Optional[Dict[str, Any]] = Field(None, description="Execution input parameters")
+    execution_request_id: Optional[str] = Field(
+        None, 
+        max_length=255,
+        description="Idempotency key for duplicate prevention"
+    )
+
+
+class TaskResponse(BaseModel):
+    """Schema for task response."""
+    id: UUID
+    execution_id: UUID
+    workflow_task_id: str
+    name: str
+    type: str
+    config: Dict[str, Any]
+    input: Optional[Dict[str, Any]]
+    output: Optional[Dict[str, Any]]
+    error: Optional[str]
+    status: str
+    worker_id: Optional[str]
+    retry_count: int
+    max_retries: int
+    depends_on: list[str]
+    position: int
+    started_at: Optional[datetime]
+    completed_at: Optional[datetime]
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ExecutionResponse(BaseModel):
+    """Schema for execution response."""
+    id: UUID
+    workflow_id: UUID
+    execution_request_id: Optional[str]
+    triggered_by: str
+    status: str
+    input: Optional[Dict[str, Any]]
+    result: Optional[Dict[str, Any]]
+    error: Optional[str]
+    trace_id: str
+    retry_count: int
+    started_at: Optional[datetime]
+    completed_at: Optional[datetime]
+    created_at: datetime
+    updated_at: datetime
+    tasks: list[TaskResponse] = Field(default_factory=list)
+
+    class Config:
+        from_attributes = True

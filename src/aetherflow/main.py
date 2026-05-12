@@ -30,7 +30,7 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 dependencies.SessionLocal = SessionLocal
 
 # Import router after dependencies are set
-from aetherflow.api import router as workflows_router
+from aetherflow.api import workflows_router, executions_router
 
 
 @asynccontextmanager
@@ -69,6 +69,7 @@ app = FastAPI(
 
 # Include routers
 app.include_router(workflows_router)
+app.include_router(executions_router)
 
 
 @app.get("/health", tags=["Health"])

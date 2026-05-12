@@ -70,9 +70,9 @@ See [ARCHITECTURE_PRAGMATIC_MVP.md](ARCHITECTURE_PRAGMATIC_MVP.md) for detailed 
 ### Milestone 1: MVP Execution Engine (Week 1-2)
 
 - [x] Bootstrap project structure
-- [ ] Database schema and migrations
-- [ ] Workflow CRUD endpoints
-- [ ] Execution trigger and status tracking
+- [x] Database schema and migrations
+- [x] Workflow CRUD endpoints
+- [x] Execution trigger and status tracking
 - [ ] Worker task execution
 - [ ] Integration test
 
