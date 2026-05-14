@@ -6,11 +6,16 @@ An opinionated, production-minded orchestration engine built for reliability, ob
 
 ## Features (Roadmap)
 
-- ✅ **Workflow execution** (sequential DAG execution)
-- ✅ **Retry logic** (exponential backoff, max retries)
-- ✅ **Worker processing** (task-based execution)
+- ✅ **Workflow CRUD** (create, list workflows)
+- ✅ **Execution management** (create executions, track status)
+- ✅ **Task workflow execution** (sequential DAG execution via worker)
+- ✅ **Retry logic** (exponential backoff, max retries per task)
+- ✅ **Worker processing** (async task execution with HTTP and Python support)
 - ✅ **Execution lifecycle tracking** (PENDING → RUNNING → SUCCESS/FAILED)
+- ✅ **Dependency resolution** (automatic DAG ordering and task queuing)
 - ✅ **Structured logging** (JSON logs for debugging and analysis)
+- ✅ **Redis queue** (persistent async task queue)
+- 🔄 **Execution status aggregation** (update execution status based on tasks) — Phase 1.6
 - 🔄 **Job scheduling** (cron-based execution) — Phase 2
 - 🔄 **Sub-workflows** (nested DAGs) — Phase 2
 - 🔄 **Conditional branching** (if/else task flows) — Phase 2
@@ -30,7 +35,7 @@ An opinionated, production-minded orchestration engine built for reliability, ob
 See [BOOTSTRAP.md](BOOTSTRAP.md) for detailed setup instructions, or [QUICKREF.md](QUICKREF.md) for handy commands.
 
 ```bash
-# Start local environment
+# Start all services (API, database, Redis, worker)
 docker-compose up -d
 
 # Run migrations
@@ -41,6 +46,47 @@ curl http://localhost:8000/health
 
 # View API docs
 open http://localhost:8000/docs
+
+# Watch worker logs
+docker logs aetherflow_worker -f
+```
+
+## Example Usage
+
+```bash
+# Create a workflow
+WORKFLOW_ID=$(curl -s -X POST http://localhost:8000/workflows \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "My Workflow",
+    "definition": {
+      "version": 1,
+      "tasks": [
+        {
+          "id": "task_1",
+          "type": "http",
+          "name": "Fetch Data",
+          "config": {"url": "https://api.example.com/data"},
+          "depends_on": []
+        },
+        {
+          "id": "task_2",
+          "type": "http",
+          "name": "Process",
+          "config": {"url": "https://api.example.com/process"},
+          "depends_on": ["task_1"]
+        }
+      ]
+    }
+  }' | jq -r '.id')
+
+# Trigger execution
+EXECUTION_ID=$(curl -s -X POST http://localhost:8000/workflows/$WORKFLOW_ID/execute \
+  -H "Content-Type: application/json" \
+  -d '{}' | jq -r '.id')
+
+# Check status (worker processes tasks automatically)
+curl http://localhost:8000/executions/$EXECUTION_ID | jq '.tasks[].status'
 ```
 
 ## Architecture
@@ -130,4 +176,4 @@ Questions? [Open an issue](https://github.com/aetherflow/aetherflow/issues) (roa
 ---
 
 **Status**: Alpha - Milestone 1 in progress  
-**Last Updated**: May 8, 2026
+**Last Updated**: May 14, 2026

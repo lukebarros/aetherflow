@@ -19,14 +19,21 @@ docker-compose exec api alembic upgrade head
 ## Daily Development
 
 ```bash
-# Start services
+# Start all services (API, database, Redis, worker)
 docker-compose up -d
 
-# Watch logs
+# Watch API logs
 docker-compose logs -f api
+
+# Watch worker logs  
+docker-compose logs -f worker
 
 # Stop services
 docker-compose down
+
+# Stop specific service
+docker-compose stop api
+docker-compose stop worker
 ```
 
 ## Database Commands
@@ -49,6 +56,46 @@ SELECT * FROM executions ORDER BY created_at DESC LIMIT 5;
 
 # Exit
 \q
+```
+
+## API Testing
+
+```bash
+# Create a workflow
+WORKFLOW_ID=$(curl -s -X POST http://localhost:8000/workflows \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Test Workflow",
+    "definition": {
+      "version": 1,
+      "tasks": [
+        {
+          "id": "task_1",
+          "type": "http",
+          "name": "HTTP Task",
+          "config": {"url": "https://httpbin.org/get"},
+          "depends_on": []
+        }
+      ]
+    }
+  }' | jq -r '.id')
+
+# List workflows
+curl http://localhost:8000/workflows | jq '.items[].name'
+
+# Execute workflow
+EXECUTION_ID=$(curl -s -X POST http://localhost:8000/workflows/$WORKFLOW_ID/execute \
+  -H "Content-Type: application/json" \
+  -d '{}' | jq -r '.id')
+
+# Get execution status (worker processes automatically)
+curl http://localhost:8000/executions/$EXECUTION_ID | jq '{status: .status, tasks: [.tasks[].status]}'
+
+# View task output
+curl http://localhost:8000/executions/$EXECUTION_ID | jq '.tasks[0].output'
+
+# Health check
+curl http://localhost:8000/health | jq '.'
 ```
 
 ## Migration Commands

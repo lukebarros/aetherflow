@@ -7,8 +7,10 @@
 This bootstrap provides:
 
 - **SQLAlchemy models** (Workflow, Execution, Task) with proper indexes
-- **FastAPI setup** with database connection and health checks
-- **Docker Compose** for local development (PostgreSQL + Redis)
+- **FastAPI API** with workflow/execution endpoints and health checks
+- **Task worker** with async HTTP/Python executors
+- **Redis queue** for async task management
+- **Docker Compose** for local development (PostgreSQL + Redis + API + Worker)
 - **Alembic migrations** ready for schema management
 - **Structured logging** with structlog JSON output
 - **Configuration management** via environment variables
@@ -20,18 +22,28 @@ aetherflow/
 ├── src/aetherflow/
 │   ├── __init__.py          # Package marker
 │   ├── main.py              # FastAPI app entry
+│   ├── api.py               # API endpoints (workflows, executions)
 │   ├── models.py            # SQLAlchemy models
+│   ├── schema.py            # Pydantic validation schemas
+│   ├── service.py           # Business logic
 │   ├── config.py            # Settings (env vars)
 │   ├── logging.py           # Structured logging
-│   └── ... (endpoints added in next phases)
+│   ├── queue.py             # Redis queue interface
+│   ├── worker.py            # Task worker & executors
+│   ├── worker_main.py       # Worker entry point
+│   ├── dependencies.py      # Dependency injection
+│   └── __init__.py
 ├── alembic/
 │   ├── env.py               # Alembic runtime config
 │   ├── script.py.mako       # Migration template
-│   └── versions/            # Migration files (auto-generated)
+│   └── versions/            # Migration files
+├── tests/
+│   └── (test files)
 ├── requirements.txt         # Python dependencies
 ├── docker-compose.yml       # Local dev environment
 ├── Dockerfile               # Container image
-└── .env.example            # Environment template
+├── .env.example            # Environment template
+└── README.md               # This file
 ```
 
 ## Quick Start
@@ -50,7 +62,7 @@ cd aetherflow
 # Copy environment template
 cp .env.example .env
 
-# Start services (PostgreSQL + Redis + API)
+# Start all services (PostgreSQL + Redis + API + Worker)
 docker-compose up -d
 
 # Run migrations (creates tables)
@@ -60,6 +72,10 @@ docker-compose exec api alembic upgrade head
 # Option B: Locally (if Python installed)
 export DATABASE_URL=postgresql://aetherflow:aetherflow_dev@localhost:5432/aetherflow
 alembic upgrade head
+
+# Verify worker is running
+docker-compose ps | grep worker  # Should show "Up"
+docker logs aetherflow_worker --tail 5  # Should show worker started
 ```
 
 ### 3. Verify Setup
@@ -80,6 +96,9 @@ open http://localhost:8000/docs
 ```bash
 # Stream API logs
 docker-compose logs -f api
+
+# Stream worker logs (where tasks execute)
+docker-compose logs -f worker
 
 # Stream all services
 docker-compose logs -f
@@ -172,13 +191,13 @@ with LogContext(execution_id=exec_id, trace_id=trace_id):
 **Services**
 - `postgres`: Database with health checks
 - `redis`: Queue and caching
-- `api`: FastAPI application with hot reload
-- `worker`: Commented out (to implement next)
+- `api`: FastAPI application with hot reload (HTTP endpoints)
+- `worker`: Task consumer and executor (processes queued tasks)
 
 **Volumes**
-- Source code mounted (hot reload)
+- Source code mounted (hot reload for API and worker)
 - PostgreSQL data persisted
-- No shared volumes initially
+- No shared volumes needed
 
 **Networks**
 - Single bridge network for service discovery

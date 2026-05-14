@@ -12,6 +12,15 @@ from aetherflow.logging import get_logger
 
 logger = get_logger(__name__)
 
+# Import queue only if available (avoid circular imports)
+def get_queue():
+    """Lazy import to avoid circular imports."""
+    try:
+        from aetherflow.queue import task_queue
+        return task_queue
+    except ImportError:
+        return None
+
 
 def create_workflow(
     db: Session,
@@ -231,6 +240,9 @@ def create_execution(
     db.commit()
     db.refresh(execution)
     
+    # Enqueue initial tasks (with no dependencies)
+    enqueue_initial_tasks(db, execution.id)
+    
     logger.info(
         "execution_created",
         execution_id=str(execution.id),
@@ -277,3 +289,124 @@ def get_execution_tasks(db: Session, execution_id: Any) -> list[Task]:
     """
     tasks = db.query(Task).filter(Task.execution_id == execution_id).order_by(Task.position).all()
     return tasks
+
+
+def enqueue_initial_tasks(db: Session, execution_id: Any) -> int:
+    """
+    Enqueue all ready tasks (with no dependencies) for an execution.
+    
+    Args:
+        db: Database session
+        execution_id: ID of the execution
+        
+    Returns:
+        Number of tasks enqueued
+    """
+    queue = get_queue()
+    if not queue:
+        logger.warning("queue_not_available", execution_id=str(execution_id))
+        return 0
+    
+    # Get all tasks with no dependencies
+    tasks = db.query(Task).filter(
+        Task.execution_id == execution_id,
+        Task.status == TaskStatus.PENDING,
+    ).all()
+    
+    enqueued_count = 0
+    for task in tasks:
+        if not task.depends_on:  # Only enqueue tasks with no dependencies
+            success = queue.enqueue_task(
+                task_id=task.id,
+                execution_id=execution_id,
+                workflow_task_id=task.workflow_task_id,
+                task_type=task.type,
+                config=task.config,
+                depends_on=task.depends_on,
+            )
+            if success:
+                enqueued_count += 1
+    
+    logger.info(
+        "initial_tasks_enqueued",
+        execution_id=str(execution_id),
+        count=enqueued_count,
+    )
+    return enqueued_count
+
+
+def update_execution_status(
+    db: Session,
+    execution_id: Any,
+    status: ExecutionStatus,
+    result: Optional[Dict[str, Any]] = None,
+    error: Optional[str] = None,
+) -> Optional[Execution]:
+    """
+    Update execution status.
+    
+    Args:
+        db: Database session
+        execution_id: ID of the execution
+        status: New status
+        result: Result data
+        error: Error message
+        
+    Returns:
+        Updated Execution object
+    """
+    execution = db.query(Execution).filter(Execution.id == execution_id).first()
+    if not execution:
+        logger.warning("execution_not_found_for_update", execution_id=str(execution_id))
+        return None
+    
+    execution.status = status
+    execution.updated_at = datetime.utcnow()
+    
+    if status == ExecutionStatus.RUNNING:
+        execution.started_at = datetime.utcnow()
+    elif status in (ExecutionStatus.SUCCESS, ExecutionStatus.FAILED):
+        execution.completed_at = datetime.utcnow()
+    
+    if result:
+        execution.result = result
+    if error:
+        execution.error = error
+    
+    db.commit()
+    logger.info(
+        "execution_status_updated",
+        execution_id=str(execution_id),
+        status=status,
+    )
+    return execution
+
+
+def check_execution_completion(db: Session, execution_id: Any) -> Optional[str]:
+    """
+    Check if all tasks in an execution are complete.
+    Returns the status: SUCCESS if all succeeded, FAILED if any failed, None if still running.
+    
+    Args:
+        db: Database session
+        execution_id: ID of the execution
+        
+    Returns:
+        ExecutionStatus string or None if still running
+    """
+    tasks = db.query(Task).filter(Task.execution_id == execution_id).all()
+    if not tasks:
+        return None
+    
+    statuses = [t.status for t in tasks]
+    
+    # If any failed, execution failed
+    if TaskStatus.FAILED in statuses:
+        return ExecutionStatus.FAILED
+    
+    # If all succeeded, execution succeeded
+    if all(s == TaskStatus.SUCCESS for s in statuses):
+        return ExecutionStatus.SUCCESS
+    
+    # Otherwise still running
+    return None

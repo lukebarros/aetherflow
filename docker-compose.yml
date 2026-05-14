@@ -58,6 +58,27 @@ services:
 
   # Placeholder for worker (will configure in next milestone)
   # worker:
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aetherflow_worker
+    environment:
+      DATABASE_URL: postgresql://aetherflow:aetherflow_dev@postgres:5432/aetherflow
+      REDIS_URL: redis://redis:6379/0
+      LOG_LEVEL: INFO
+      ENV: development
+    volumes:
+      - ./src:/app/src
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: python3 -m aetherflow.worker_main
+    networks:
+      - aetherflow
   #   build:
   #     context: .
   #     dockerfile: Dockerfile
